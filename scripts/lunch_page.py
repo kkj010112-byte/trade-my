@@ -3,20 +3,24 @@
 실행: uv run python scripts/lunch_page.py
 입력: workbench/day3/outputs/lunch_clean.csv · labs/day3/lab-c/nutritionist_memo.md (읽기만)
 결과: workbench/day3/outputs/hanbit_lunch.html
-근거: labs/day3/lab-c/lab_c_guide.md 「5. 감 검증」 · 「6. 페이지 규칙」
-지금 구역: 머리 → 영양사님 감 검증. 같은 입력이면 같은 페이지(시각 · 난수 없음).
+근거: labs/day3/lab-c/lab_c_guide.md 「5. 감 검증」 · 「6. 페이지 규칙」 · 「7. 예보관 시험」
+지금 구역: 머리 → 예보 성적표 → 영양사님 감 검증. 같은 입력이면 같은 페이지(시각 없음 · 난수 시드 고정).
 """
 import html
 import json
+import math
 import re
 import sys
 from pathlib import Path
 
 import pandas as pd
+from lightgbm import LGBMRegressor
+from sklearn.linear_model import LinearRegression
 
 sys.stdout.reconfigure(encoding="utf-8")
 CLEAN = "workbench/day3/outputs/lunch_clean.csv"
 MEMO = "labs/day3/lab-c/nutritionist_memo.md"
+PLAN = "labs/day3/lab-c/next_week_plan.csv"
 OUT = Path("workbench/day3/outputs/hanbit_lunch.html")
 
 GAP = 2.0  # 100명당 2명 이상 차이 = '차이 있음' (사람이 정한 선)
@@ -111,6 +115,184 @@ pay_diff = payday["_raw"] - normal["_raw"]
 pay_text = ("차이 있음 — 월급날이 더 많음" if pay_diff >= GAP
             else "차이 있음 — 월급날이 더 적음" if pay_diff <= -GAP else "차이 작음(2명 안쪽)")
 
+# ── 예보관 시험 계산 ─────────────────────────────────────────
+TEST_START = "2026-09-14"  # 이 날 전 = 배우는 기간, 이 날부터 = 시험 기간
+TEXT_COLS = ["요일", "날씨", "메인메뉴", "행사"]
+NUM_COLS = ["최고기온", "월급날", "출근예정"]
+MENU_FACTOR = {"돈가스": 1.1, "카레": 1.1, "샐러드": 0.9}  # 나머지 1.0
+EXTRA = 10  # AI 준비 = 예보 + 10
+COST = 4500  # 1인분 원가(가정)
+
+
+def round_half_up(x):
+    return int(math.floor(x + 0.5))
+
+
+def md(day):
+    m, d = day[5:7], day[8:10]
+    return f"{int(m)}/{int(d)}"
+
+
+train = df[df["날짜"] < TEST_START].copy()
+test = df[df["날짜"] >= TEST_START].copy()
+TEMP_FILL = float(train["최고기온"].median())  # 최고기온 빈칸 = 배우는 기간의 가운데 값
+
+
+def features(rows, columns=None):
+    x = rows[TEXT_COLS + NUM_COLS].copy()
+    x["행사"] = x["행사"].replace("", "없음")
+    x["최고기온"] = x["최고기온"].fillna(TEMP_FILL)
+    x = pd.get_dummies(x, columns=TEXT_COLS, dtype=float)  # drop_first 없이
+    if columns is not None:  # 배울 때와 같은 열 · 없는 열은 0
+        x = x.reindex(columns=columns, fill_value=0.0)
+    return x.astype(float)
+
+
+X_train = features(train)
+FEATURE_COLS = list(X_train.columns)
+X_test = features(test, FEATURE_COLS)
+y_train, y_test = train["식수"].astype(float), test["식수"].astype(float)
+
+forecasters = {
+    "선형 회귀": LinearRegression(),
+    "LightGBM": LGBMRegressor(n_estimators=300, learning_rate=0.05, num_leaves=15,
+                              min_child_samples=5, random_state=42, verbose=-1),
+}
+test_pred, score = {}, {}
+for name, model in forecasters.items():
+    model.fit(X_train.to_numpy(), y_train.to_numpy())
+    test_pred[name] = model.predict(X_test.to_numpy())
+    score[name] = float((abs(test_pred[name] - y_test.to_numpy())).mean())  # 하루 평균 몇 인분 차이
+OUR = min(score, key=score.get)
+OTHER = next(n for n in score if n != OUR)
+OUR_MODEL = forecasters[OUR]
+
+
+def nutritionist_formula(day, weekday, menu):
+    """그날 전 같은 요일의 실제 식수 4개(깨끗한 표에서 가장 가까운 날부터) 평균 × 메뉴 배수."""
+    prev = df[(df["날짜"] < day) & (df["요일"] == weekday)].sort_values("날짜").tail(4)
+    if len(prev) < 4:
+        raise ValueError(f"{day}: 같은 요일 앞 기록 {len(prev)}개 — 확인 필요")
+    return prev["식수"].mean() * MENU_FACTOR.get(menu, 1.0), list(prev["날짜"])
+
+
+test = test.reset_index(drop=True)
+test["AI 예보"] = [round_half_up(p) for p in test_pred[OUR]]
+test["AI 준비"] = test["AI 예보"] + EXTRA
+test["공식 원값"] = [nutritionist_formula(r.날짜, r.요일, r.메인메뉴)[0] for r in test.itertuples()]
+test["공식 준비"] = test["공식 원값"].map(round_half_up)
+
+
+def outcome(prep):
+    left = (prep - test["식수"]).clip(lower=0)
+    short = (test["식수"] - prep).clip(lower=0)
+    return {"left": int(left.sum()), "left_won": int(left.sum()) * COST,
+            "short": int(short.sum()), "short_days": int((short > 0).sum())}
+
+
+ai_out, formula_out = outcome(test["AI 준비"]), outcome(test["공식 준비"])
+ai_mae = score[OUR]
+formula_mae = float((test["공식 준비"] - test["식수"]).abs().mean())
+EVENT_DAYS = {"2026-09-23": "추석 연휴 전날 · 돈가스", "2026-09-30": "비 오는 수요일 · 카레"}
+
+# ── 다음 주 예보 계산 ─────────────────────────────────────────
+# 우리 예보관(시험에서 이긴 모델, 배우는 기간으로 배운 그대로)에게 묻는다.
+nxt = pd.read_csv(PLAN, encoding="utf-8-sig", keep_default_na=False)
+nxt = nxt.rename(columns={"날씨예보": "날씨", "최고기온예보": "최고기온"})
+nxt["최고기온"] = pd.to_numeric(nxt["최고기온"].replace("", None))
+nxt["월급날"] = nxt["월급날"].map(lambda v: 1 if v == "Y" else 0)
+nxt["출근예정"] = nxt["출근예정"].astype(int)
+nxt["예보"] = [round_half_up(p) for p in OUR_MODEL.predict(features(nxt, FEATURE_COLS).to_numpy())]
+nxt["준비"] = nxt["예보"] + EXTRA
+nxt["공식 원값"] = [nutritionist_formula(r["날짜"], r["요일"], r["메인메뉴"])[0] for _, r in nxt.iterrows()]
+nxt["공식"] = nxt["공식 원값"].map(round_half_up)
+MAX_DAY = nxt.loc[nxt["예보"].idxmax(), "날짜"]
+MIN_DAY = nxt.loc[nxt["예보"].idxmin(), "날짜"]
+
+# 코멘트의 근거로 쓸 감 검증 숫자(출근 100명당) — 위에서 계산한 값만 끼워 넣는다
+EVIDENCE = {
+    "비": f"기록에서 비 오는 날은 100명당 {rain['value']:.1f}명(맑은 날 {sunny['value']:.1f}명)",
+    "금": f"기록에서 금요일은 100명당 {fri['value']:.1f}명(월–목 {mon_thu['value']:.1f}명)",
+    "월급날": f"기록에서 월급날은 100명당 {payday['value']:.1f}명(보통 날 {normal['value']:.1f}명)",
+}
+MENU_RANK = {g["name"]: (i + 1, g["value"]) for i, g in enumerate(menus)}
+
+# ── '만약에' 시뮬레이터 계산 ──────────────────────────────────
+# 우리 예보관이 선형 회귀이면 그 모델, LightGBM이면 이 구역만 선형 회귀(같은 배우는 기간)로 계산한다.
+SIM_MODEL = OUR_MODEL if OUR == "선형 회귀" else forecasters["선형 회귀"]
+SIM = {
+    "intercept": float(SIM_MODEL.intercept_),
+    "coef": {c: float(w) for c, w in zip(FEATURE_COLS, SIM_MODEL.coef_)},  # 배울 때 만든 열 이름 그대로
+    "tempFill": TEMP_FILL,
+    "options": {
+        "요일": list("월화수목금"),
+        "날씨": ["맑음", "흐림", "비", "눈"],
+        "메인메뉴": sorted(df["메인메뉴"].unique()),
+        "행사": ["없음"] + sorted(v for v in df["행사"].unique() if v),
+    },
+    "base": {"요일": "화", "날씨": "맑음", "최고기온": 22, "메인메뉴": "비빔밥", "행사": "없음", "월급날": 0, "출근예정": 470},
+    "presets": [{"label": f"{md(r['날짜'])}({r['요일']})", "요일": r["요일"], "날씨": r["날씨"],
+                 "최고기온": float(r["최고기온"]), "메인메뉴": r["메인메뉴"], "행사": r["행사"] or "없음",
+                 "월급날": int(r["월급날"]), "출근예정": int(r["출근예정"])} for _, r in nxt.iterrows()],
+    "extra": EXTRA,
+    "fallbackNote": "" if OUR == "선형 회귀" else "우리 예보관은 LightGBM이지만, 이 구역만 선형 회귀로 계산합니다.",
+}
+
+
+def sim_predict(day):
+    """페이지 JavaScript와 같은 식 · 같은 순서: 절편 + Σ(계수 × 값)."""
+    total = SIM["intercept"]
+    for col, w in SIM["coef"].items():
+        if col in NUM_COLS:
+            v = day[col]
+            if col == "최고기온" and (v is None or v == ""):
+                v = SIM["tempFill"]
+            total += w * float(v)
+        else:
+            group_name, value = col.split("_", 1)
+            total += w * (1.0 if day[group_name] == value else 0.0)
+    return total
+
+
+SIM_BASE = round_half_up(sim_predict(SIM["base"]))
+SIM_CHECK = [(p["label"], round_half_up(sim_predict(p))) for p in SIM["presets"]]
+if OUR == "선형 회귀":  # 스스로 확인: 불러온 하루의 예보 = '다음 주 예보' 카드 숫자
+    for (label, v), card in zip(SIM_CHECK, nxt["예보"]):
+        assert v == card, f"만약에 {label}: {v} ≠ 카드 {card}"
+
+
+def topic(word):
+    """받침이 있으면 '은', 없으면 '는'."""
+    last = word[-1]
+    has_final = "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
+    return word + ("은" if has_final else "는")
+
+
+def comment(r):
+    cond = [f"{r['요일']}요일", r["날씨"], r["메인메뉴"]]
+    if r["행사"]:
+        cond.append(r["행사"])
+    if r["월급날"]:
+        cond.append("월급날")
+    gap = r["준비"] - r["공식"]
+    if gap == 0:
+        vs = f"영양사님 공식({r['공식']}인분)과 같아요"
+    else:
+        vs = f"영양사님 공식({r['공식']}인분)보다 {abs(gap)}인분 {'많아요' if gap > 0 else '적어요'}"
+    if r["월급날"]:
+        why = EVIDENCE["월급날"]
+    elif r["날씨"] == "비":
+        why = EVIDENCE["비"]
+    elif r["요일"] == "금":
+        why = EVIDENCE["금"]
+    elif r["메인메뉴"] in MENU_RANK:
+        rank, val = MENU_RANK[r["메인메뉴"]]
+        why = f"기록에서 {topic(r['메인메뉴'])} 메뉴 {len(menus)}개 중 {rank}등(100명당 {val:.1f}명)"
+    else:
+        why = ""
+    tail = f" — {why}이에요." if why else "."
+    return f"영양사님, {' · '.join(cond)}인 날이에요. 준비 {r['준비']}인분은 {vs}{tail}"
+
 # ── HTML ────────────────────────────────────────────────────
 BADGE_CLASS = {"맞음": "ok", "반만": "half", "틀림": "bad"}
 charts = {}  # canvas id → 막대 데이터 (페이지 안 JSON)
@@ -182,6 +364,125 @@ def section_head():
 </header>"""
 
 
+LINE = {}  # 시험 20일 선 그래프 데이터 (페이지 안 JSON)
+
+
+def section_next_week():
+    cards = ""
+    for _, r in nxt.iterrows():
+        flag = ""
+        if r["날짜"] == MAX_DAY:
+            flag = '<span class="flag hi">이번 주 가장 많은 날</span>'
+        elif r["날짜"] == MIN_DAY:
+            flag = '<span class="flag lo">이번 주 가장 적은 날</span>'
+        chips = [r["날씨"], r["메인메뉴"]] + ([r["행사"]] if r["행사"] else []) + (["월급날"] if r["월급날"] else [])
+        chip_html = "".join(f'<span class="chip">{esc(c)}</span>' for c in chips)
+        cards += f"""
+    <article class="day{' is-max' if r['날짜'] == MAX_DAY else ''}{' is-min' if r['날짜'] == MIN_DAY else ''}">
+      <div class="day-top"><span class="date">{md(r['날짜'])}</span><span class="wd">{r['요일']}요일</span></div>
+      {flag}
+      <p class="big"><b>{r['예보']}</b>명</p>
+      <p class="prep">준비 {r['준비']}인분</p>
+      <p class="formula">영양사님 공식이면 {r['공식']}인분</p>
+      <div class="chips">{chip_html}</div>
+      <p class="comment">{esc(comment(r))}</p>
+    </article>"""
+    return f"""
+<section id="next-week">
+  <h2>다음 주 예보</h2>
+  <p class="lead">{nxt['날짜'].min()} ~ {nxt['날짜'].max()} · 시험에서 이긴 우리 예보관({esc(OUR)})이 계획표(메뉴 · 날씨예보 · 행사 · 출근예정)를 보고 예보했습니다.
+    준비 인분 = 예보 + {EXTRA}. 준비량은 영양사님이 정해 주세요.</p>
+  <div class="week">{cards}
+  </div>
+</section>"""
+
+
+def section_whatif():
+    def select(name, label):
+        opts = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in SIM["options"][name])
+        return f'<label class="field"><span>{label}</span><select data-k="{esc(name)}">{opts}</select></label>'
+
+    presets = "".join(f'<button type="button" class="preset" data-i="{i}">{esc(p["label"])}</button>'
+                      for i, p in enumerate(SIM["presets"]))
+    note = f'<p class="note">{esc(SIM["fallbackNote"])}</p>' if SIM["fallbackNote"] else ""
+    return f"""
+<section id="whatif">
+  <h2>만약에 — 조건을 골라 보기</h2>
+  <p class="lead">조건을 바꾸면 우리 예보관({esc(OUR)})의 계산식으로 예보가 바로 다시 나옵니다.
+    처음 값은 기준 하루(화요일 · 맑음 · 22도 · 비빔밥 · 행사 없음 · 월급날 아님 · 출근 470명)입니다.</p>{note}
+  <div class="card sim">
+    <div class="presets"><span class="lab">다음 주 하루 불러오기</span>{presets}
+      <button type="button" class="preset reset" data-i="base">기준 하루</button></div>
+    <div class="fields">
+      {select("요일", "요일")}{select("날씨", "날씨")}{select("메인메뉴", "메인메뉴")}{select("행사", "행사")}
+      <label class="field"><span>월급날</span><select data-k="월급날"><option value="0">아님</option><option value="1">맞음</option></select></label>
+      <label class="field"><span>출근 인원(명)</span><input type="number" inputmode="numeric" min="0" step="1" data-k="출근예정"></label>
+      <label class="field"><span>최고기온(도)</span><input type="number" inputmode="decimal" step="0.1" data-k="최고기온"></label>
+    </div>
+    <div class="sim-out" aria-live="polite">
+      <p class="big"><b id="sim-n">{SIM_BASE}</b>명 · 준비 <b id="sim-prep">{SIM_BASE + EXTRA}</b>인분</p>
+      <p id="sim-vs" class="formula">기준 하루와 같음</p>
+    </div>
+  </div>
+</section>"""
+
+
+def section_scorecard():
+    LINE.update({
+        "labels": [f"{md(r.날짜)}({r.요일})" for r in test.itertuples()],
+        "actual": [int(v) for v in test["식수"]],
+        "ai": [int(v) for v in test["AI 예보"]],
+        "formula": [int(v) for v in test["공식 준비"]],
+        "marks": [i for i, d in enumerate(test["날짜"]) if d in EVENT_DAYS],
+        "ourName": OUR,
+    })
+    rows = "".join(
+        f'<div class="fc{" pick" if n == OUR else ""}"><span class="lab">{esc(n)}</span>'
+        f'<b>{score[n]:.1f}</b><span class="unit">인분 차이 / 하루</span>'
+        f'{"<span class=pick-tag>우리 예보관</span>" if n == OUR else ""}</div>' for n in forecasters)
+    notes = ""
+    for _, r in test[test["날짜"].isin(EVENT_DAYS)].iterrows():
+        notes += (f'<li><b>{md(r["날짜"])}({r["요일"]}) {esc(EVENT_DAYS[r["날짜"]])}</b> — 실제 {r["식수"]}명 · '
+                  f'AI 예보 {r["AI 예보"]}명(준비 {r["AI 준비"]}인분) · 영양사님 공식 {r["공식 준비"]}인분</li>')
+
+    def compare(title, ai_val, f_val, ai_sub="", f_sub="", note=""):
+        return f"""
+    <article class="card cmp">
+      <h3>{title}</h3>
+      <div class="nums">
+        <div class="num"><span class="lab">AI(우리 예보관 + {EXTRA})</span><b>{ai_val}</b><span class="days">{ai_sub}</span></div>
+        <div class="num"><span class="lab">영양사님 공식</span><b>{f_val}</b><span class="days">{f_sub}</span></div>
+      </div>{note}
+    </article>"""
+
+    cards = (
+        compare("하루 평균 몇 인분 차이", f"{ai_mae:.1f}", f"{formula_mae:.1f}", "인분", "인분",
+                '<p class="how">AI는 예보, 공식은 준비량과 실제의 차이(크기만)를 평균</p>')
+        + compare("남은 밥", f'{ai_out["left"]:,}', f'{formula_out["left"]:,}',
+                  f'인분 · {ai_out["left_won"]:,}원', f'인분 · {formula_out["left_won"]:,}원',
+                  f'<p class="how">1인분 원가 {COST:,}원(가정) · 시험 {len(test)}일 합계</p>')
+        + compare("모자란 밥 (= 컵라면을 드신 분)", f'{ai_out["short"]:,}', f'{formula_out["short"]:,}',
+                  f'인분 · {ai_out["short_days"]}일', f'인분 · {formula_out["short_days"]}일',
+                  '<p class="how">인분 합계 · 모자란 날 수</p>')
+    )
+    return f"""
+<section id="scorecard">
+  <h2>예보 성적표</h2>
+  <p class="lead">{train["날짜"].min()} ~ {train["날짜"].max()}({len(train)}일)로 배우고,
+    배울 때 쓰지 않은 최근 {len(test)}일({test["날짜"].min()} ~ {test["날짜"].max()})로 시험했습니다.</p>
+  <div class="forecasters">{rows}</div>
+  <p class="tally">복잡한 쪽이 늘 이기지는 않는다 — 시험으로 고른다</p>
+  <p class="note">예보관 설정은 모두 같은 결과를 보려고 고정</p>
+  <article class="card wide">
+    <h3>시험 {len(test)}일 — 실제 · 우리 예보관({esc(OUR)}) · 영양사님 공식</h3>
+    <div class="chart" style="height:300px"><canvas id="testline" aria-label="시험 기간 선 그래프"></canvas></div>
+    <ul class="marks">{notes}</ul>
+  </article>
+  <div class="cards three">{cards}
+  </div>
+</section>"""
+
+
 def section_beliefs():
     cards = "".join(belief_card(b) for b in beliefs) + payday_card()
     tally = {v: sum(b["verdict"] == v for b in beliefs) for v in ["맞음", "반만", "틀림"]}
@@ -225,6 +526,47 @@ section h2 { font-size:22px; margin:0 0 8px; }
 .num .lab { width:100%; font-size:14px; color:var(--sub); }
 .num b { font-size:24px; } .num .unit { font-size:14px; } .num .days { margin-left:auto; font-size:14px; color:var(--sub); }
 .chart { position:relative; width:100%; }
+section + section { margin-top:40px; }
+.forecasters { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap:12px; margin-bottom:12px; }
+.fc { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+      display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 6px; }
+.fc .lab { width:100%; font-size:14px; color:var(--sub); font-weight:700; }
+.fc b { font-size:28px; } .fc .unit { font-size:14px; color:var(--sub); }
+.fc.pick { border:2px solid var(--accent); }
+.pick-tag { margin-left:auto; font-size:14px; font-weight:700; color:var(--accent); }
+.card.wide { margin:16px 0; }
+.marks { margin:12px 0 0; padding-left:18px; font-size:14px; }
+.marks li + li { margin-top:4px; }
+.cards.three { grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.week { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:900px) { .week { grid-template-columns:repeat(5, minmax(0, 1fr)); } }
+.day { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0;
+       display:flex; flex-direction:column; gap:4px; }
+.day.is-max { border:2px solid var(--accent); } .day.is-min { border:2px solid var(--warn); }
+.day-top { display:flex; justify-content:space-between; align-items:baseline; }
+.date { font-size:20px; font-weight:700; } .wd { color:var(--sub); font-size:15px; }
+.flag { align-self:flex-start; font-size:14px; font-weight:700; padding:1px 8px; border-radius:999px; color:#fff; }
+.flag.hi { background:var(--accent); } .flag.lo { background:var(--warn); }
+.big { margin:4px 0 0; font-size:16px; } .big b { font-size:40px; line-height:1.1; }
+.prep { margin:0; font-size:17px; font-weight:700; }
+.formula { margin:0; font-size:14px; color:var(--sub); }
+.chips { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+.chip { font-size:14px; padding:1px 8px; border-radius:6px; background:var(--bg); border:1px solid var(--line); }
+.comment { margin:0; font-size:14px; color:var(--ink); }
+.sim { display:flex; flex-direction:column; gap:14px; }
+.presets { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.presets .lab { width:100%; font-size:14px; color:var(--sub); font-weight:700; }
+.preset { font:inherit; font-size:15px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
+          background:var(--bg); color:var(--ink); cursor:pointer; }
+.preset:hover, .preset:focus-visible { border-color:var(--accent); outline:none; }
+.preset.reset { color:var(--sub); }
+.fields { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap:10px; }
+.field { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.field span { font-size:14px; color:var(--sub); }
+.field select, .field input { font:inherit; font-size:16px; width:100%; padding:8px; border-radius:8px;
+          border:1px solid var(--line); background:var(--card); color:var(--ink); }
+.sim-out { border-top:1px solid var(--line); padding-top:10px; }
+.sim-out .big b { color:var(--accent); }
 .note, .how { font-size:14px; color:var(--sub); margin:8px 0 0; }
 """
 
@@ -245,11 +587,79 @@ for (const [id, c] of Object.entries(DATA.charts)) {
       scales: { x: { beginAtZero: true, suggestedMax: 100, grid: { color: '#eef0f3' } }, y: { grid: { display: false } } } }
   });
 }
+const S = DATA.sim;
+if (S) {
+  const NUM = ['최고기온', '월급날', '출근예정'];
+  const roundHalfUp = x => Math.floor(x + 0.5);
+  const predict = day => {  // 절편 + Σ(계수 × 값) — 스크립트의 sim_predict와 같은 순서
+    let total = S.intercept;
+    for (const [col, w] of Object.entries(S.coef)) {
+      if (NUM.includes(col)) {
+        let v = day[col];
+        if (col === '최고기온' && (v === '' || v === null || Number.isNaN(v))) v = S.tempFill;
+        total += w * Number(v);
+      } else {
+        const cut = col.indexOf('_');
+        total += w * (day[col.slice(0, cut)] === col.slice(cut + 1) ? 1 : 0);
+      }
+    }
+    return total;
+  };
+  const baseN = roundHalfUp(predict(S.base));
+  const box = document.getElementById('whatif');
+  const inputs = [...box.querySelectorAll('[data-k]')];
+  const read = () => {
+    const day = {};
+    for (const el of inputs) {
+      const k = el.dataset.k;
+      if (k === '월급날') day[k] = Number(el.value);
+      else if (k === '출근예정') day[k] = el.value === '' ? 0 : Number(el.value);
+      else if (k === '최고기온') day[k] = el.value === '' ? '' : Number(el.value);
+      else day[k] = el.value;
+    }
+    return day;
+  };
+  const show = () => {
+    const n = roundHalfUp(predict(read())), gap = n - baseN;
+    document.getElementById('sim-n').textContent = n;
+    document.getElementById('sim-prep').textContent = n + S.extra;
+    document.getElementById('sim-vs').textContent =
+      gap === 0 ? '기준 하루와 같음' : '기준 하루보다 ' + Math.abs(gap) + '명 ' + (gap > 0 ? '많음' : '적음');
+  };
+  const fill = day => {
+    for (const el of inputs) el.value = String(day[el.dataset.k]);
+    show();
+  };
+  for (const el of inputs) { el.addEventListener('input', show); el.addEventListener('change', show); }
+  for (const b of box.querySelectorAll('.preset'))
+    b.addEventListener('click', () => fill(b.dataset.i === 'base' ? S.base : S.presets[Number(b.dataset.i)]));
+  fill(S.base);
+}
+const L = DATA.line;
+if (L && L.labels) {
+  const WARN = css.getPropertyValue('--warn').trim(), INK = css.getPropertyValue('--ink').trim();
+  const mark = (base, big) => L.labels.map((_, i) => L.marks.includes(i) ? big : base);
+  new Chart(document.getElementById('testline'), {
+    type: 'line',
+    data: { labels: L.labels, datasets: [
+      { label: '실제', data: L.actual, borderColor: INK, backgroundColor: INK, borderWidth: 2,
+        pointRadius: mark(2, 7), pointBackgroundColor: mark(INK, WARN), pointBorderColor: mark(INK, WARN) },
+      { label: '우리 예보관(' + L.ourName + ')', data: L.ai, borderColor: ACCENT, backgroundColor: ACCENT,
+        borderWidth: 2, pointRadius: 2 },
+      { label: '영양사님 공식', data: L.formula, borderColor: '#8a93a3', backgroundColor: '#8a93a3',
+        borderWidth: 2, borderDash: [6, 4], pointRadius: 2 } ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 14 } },
+                 tooltip: { callbacks: { label: ctx => ctx.dataset.label + ' ' + ctx.parsed.y + '명' } } },
+      scales: { x: { ticks: { maxRotation: 60, autoSkip: true } }, y: { grid: { color: '#eef0f3' } } } }
+  });
+}
 """
 
 
 def page(body):
-    data = json.dumps({"charts": charts}, ensure_ascii=False).replace("</", "<\\/")
+    data = json.dumps({"charts": charts, "line": LINE, "sim": SIM}, ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -272,8 +682,8 @@ def page(body):
 """
 
 
-# 구역 순서: 머리 → (다음 단계에서 머리 바로 아래에 구역을 더한다) → 영양사님 감 검증
-sections = [section_head(), section_beliefs()]
+# 구역 순서: 머리 → 다음 주 예보 → 만약에 → 예보 성적표 → 영양사님 감 검증
+sections = [section_head(), section_next_week(), section_whatif(), section_scorecard(), section_beliefs()]
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(page("".join(sections)), encoding="utf-8")
 
@@ -284,4 +694,25 @@ for b in beliefs:
 print("  메뉴 순위: " + " > ".join(f"{g['name']} {g['value']:.1f}({g['days']}일)" for g in menus))
 print(f"월급날: {payday['name']} {payday['value']:.1f}({payday['days']}일) vs {normal['name']} {normal['value']:.1f}"
       f"({normal['days']}일) · 차이 {pay_diff:+.2f} → {pay_text}")
+print(f"\n[예보관 시험] 배우는 기간 {len(train)}일 · 시험 기간 {len(test)}일 · 최고기온 빈칸 채움 {TEMP_FILL:g}")
+for n in forecasters:
+    print(f"  {n}: 하루 평균 {score[n]:.2f}인분 차이" + ("  ← 우리 예보관" if n == OUR else ""))
+print(f"  영양사님 공식: 하루 평균 {formula_mae:.2f}인분 차이")
+for d in EVENT_DAYS:
+    r = test[test["날짜"] == d].iloc[0]
+    print(f"  {d}: 실제 {r['식수']} · AI 예보 {r['AI 예보']}(준비 {r['AI 준비']}) · 공식 {r['공식 준비']}"
+          f"({r['공식 원값']:.2f})")
+print(f"  남은 밥 AI {ai_out['left']}인분({ai_out['left_won']:,}원) · 공식 {formula_out['left']}인분({formula_out['left_won']:,}원)")
+print(f"  모자란 밥 AI {ai_out['short']}인분 {ai_out['short_days']}일 · 공식 {formula_out['short']}인분 {formula_out['short_days']}일")
+print(f"\n[다음 주 예보] 우리 예보관 {OUR}")
+for _, r in nxt.iterrows():
+    mark = " ← 가장 많은 날" if r["날짜"] == MAX_DAY else " ← 가장 적은 날" if r["날짜"] == MIN_DAY else ""
+    print(f"  {r['날짜']}({r['요일']}) {r['메인메뉴']}: 예보 {r['예보']} · 준비 {r['준비']} · 공식 {r['공식']}"
+          f"({r['공식 원값']:.2f}){mark}")
+    print(f"    {comment(r)}")
+print(f"\n[만약에] 계산 모델 {'선형 회귀(우리 예보관)' if OUR == '선형 회귀' else '선형 회귀(대신)'} · 열 {len(SIM['coef'])}개"
+      f" · 절편 {SIM['intercept']:.4f} · 기준 하루 {SIM_BASE}명(준비 {SIM_BASE + EXTRA}인분)")
+print("  불러오기 확인: " + " · ".join(f"{label} {v}명" for label, v in SIM_CHECK)
+      + (" = 다음 주 예보 카드와 같음" if OUR == "선형 회귀" else ""))
+print("구역 순서: 머리 → 다음 주 예보 → 만약에 → 예보 성적표 → 영양사님 감 검증")
 print(f"저장: {OUT}")

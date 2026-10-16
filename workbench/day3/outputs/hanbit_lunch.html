@@ -36,6 +36,47 @@ section h2 { font-size:22px; margin:0 0 8px; }
 .num .lab { width:100%; font-size:14px; color:var(--sub); }
 .num b { font-size:24px; } .num .unit { font-size:14px; } .num .days { margin-left:auto; font-size:14px; color:var(--sub); }
 .chart { position:relative; width:100%; }
+section + section { margin-top:40px; }
+.forecasters { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap:12px; margin-bottom:12px; }
+.fc { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+      display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 6px; }
+.fc .lab { width:100%; font-size:14px; color:var(--sub); font-weight:700; }
+.fc b { font-size:28px; } .fc .unit { font-size:14px; color:var(--sub); }
+.fc.pick { border:2px solid var(--accent); }
+.pick-tag { margin-left:auto; font-size:14px; font-weight:700; color:var(--accent); }
+.card.wide { margin:16px 0; }
+.marks { margin:12px 0 0; padding-left:18px; font-size:14px; }
+.marks li + li { margin-top:4px; }
+.cards.three { grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.week { display:grid; grid-template-columns:1fr; gap:12px; }
+@media (min-width:900px) { .week { grid-template-columns:repeat(5, minmax(0, 1fr)); } }
+.day { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0;
+       display:flex; flex-direction:column; gap:4px; }
+.day.is-max { border:2px solid var(--accent); } .day.is-min { border:2px solid var(--warn); }
+.day-top { display:flex; justify-content:space-between; align-items:baseline; }
+.date { font-size:20px; font-weight:700; } .wd { color:var(--sub); font-size:15px; }
+.flag { align-self:flex-start; font-size:14px; font-weight:700; padding:1px 8px; border-radius:999px; color:#fff; }
+.flag.hi { background:var(--accent); } .flag.lo { background:var(--warn); }
+.big { margin:4px 0 0; font-size:16px; } .big b { font-size:40px; line-height:1.1; }
+.prep { margin:0; font-size:17px; font-weight:700; }
+.formula { margin:0; font-size:14px; color:var(--sub); }
+.chips { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+.chip { font-size:14px; padding:1px 8px; border-radius:6px; background:var(--bg); border:1px solid var(--line); }
+.comment { margin:0; font-size:14px; color:var(--ink); }
+.sim { display:flex; flex-direction:column; gap:14px; }
+.presets { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.presets .lab { width:100%; font-size:14px; color:var(--sub); font-weight:700; }
+.preset { font:inherit; font-size:15px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
+          background:var(--bg); color:var(--ink); cursor:pointer; }
+.preset:hover, .preset:focus-visible { border-color:var(--accent); outline:none; }
+.preset.reset { color:var(--sub); }
+.fields { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap:10px; }
+.field { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.field span { font-size:14px; color:var(--sub); }
+.field select, .field input { font:inherit; font-size:16px; width:100%; padding:8px; border-radius:8px;
+          border:1px solid var(--line); background:var(--card); color:var(--ink); }
+.sim-out { border-top:1px solid var(--line); padding-top:10px; }
+.sim-out .big b { color:var(--accent); }
 .note, .how { font-size:14px; color:var(--sub); margin:8px 0 0; }
 </style>
 </head>
@@ -45,6 +86,113 @@ section h2 { font-size:22px; margin:0 0 8px; }
   <h1>한빛식당 밥 예보</h1>
   <p>(가상) 한빛정밀(주) 본사 구내식당 · 기록 기간 2025-10-01 ~ 2026-10-15 · 만든 사람 총무팀 최 대리(가상)</p>
 </header>
+<section id="next-week">
+  <h2>다음 주 예보</h2>
+  <p class="lead">2026-10-19 ~ 2026-10-23 · 시험에서 이긴 우리 예보관(선형 회귀)이 계획표(메뉴 · 날씨예보 · 행사 · 출근예정)를 보고 예보했습니다.
+    준비 인분 = 예보 + 10. 준비량은 영양사님이 정해 주세요.</p>
+  <div class="week">
+    <article class="day">
+      <div class="day-top"><span class="date">10/19</span><span class="wd">월요일</span></div>
+      
+      <p class="big"><b>332</b>명</p>
+      <p class="prep">준비 342인분</p>
+      <p class="formula">영양사님 공식이면 341인분</p>
+      <div class="chips"><span class="chip">맑음</span><span class="chip">제육볶음</span></div>
+      <p class="comment">영양사님, 월요일 · 맑음 · 제육볶음인 날이에요. 준비 342인분은 영양사님 공식(341인분)보다 1인분 많아요 — 기록에서 제육볶음은 메뉴 10개 중 4등(100명당 69.6명)이에요.</p>
+    </article>
+    <article class="day">
+      <div class="day-top"><span class="date">10/20</span><span class="wd">화요일</span></div>
+      
+      <p class="big"><b>296</b>명</p>
+      <p class="prep">준비 306인분</p>
+      <p class="formula">영양사님 공식이면 277인분</p>
+      <div class="chips"><span class="chip">흐림</span><span class="chip">샐러드</span><span class="chip">외부 손님 방문</span></div>
+      <p class="comment">영양사님, 화요일 · 흐림 · 샐러드 · 외부 손님 방문인 날이에요. 준비 306인분은 영양사님 공식(277인분)보다 29인분 많아요 — 기록에서 샐러드는 메뉴 10개 중 10등(100명당 55.0명)이에요.</p>
+    </article>
+    <article class="day is-max">
+      <div class="day-top"><span class="date">10/21</span><span class="wd">수요일</span></div>
+      <span class="flag hi">이번 주 가장 많은 날</span>
+      <p class="big"><b>370</b>명</p>
+      <p class="prep">준비 380인분</p>
+      <p class="formula">영양사님 공식이면 357인분</p>
+      <div class="chips"><span class="chip">비</span><span class="chip">카레</span></div>
+      <p class="comment">영양사님, 수요일 · 비 · 카레인 날이에요. 준비 380인분은 영양사님 공식(357인분)보다 23인분 많아요 — 기록에서 비 오는 날은 100명당 73.4명(맑은 날 65.3명)이에요.</p>
+    </article>
+    <article class="day">
+      <div class="day-top"><span class="date">10/22</span><span class="wd">목요일</span></div>
+      
+      <p class="big"><b>322</b>명</p>
+      <p class="prep">준비 332인분</p>
+      <p class="formula">영양사님 공식이면 329인분</p>
+      <div class="chips"><span class="chip">맑음</span><span class="chip">생선구이</span><span class="chip">전사 교육</span></div>
+      <p class="comment">영양사님, 목요일 · 맑음 · 생선구이 · 전사 교육인 날이에요. 준비 332인분은 영양사님 공식(329인분)보다 3인분 많아요 — 기록에서 생선구이는 메뉴 10개 중 9등(100명당 63.3명)이에요.</p>
+    </article>
+    <article class="day is-min">
+      <div class="day-top"><span class="date">10/23</span><span class="wd">금요일</span></div>
+      <span class="flag lo">이번 주 가장 적은 날</span>
+      <p class="big"><b>251</b>명</p>
+      <p class="prep">준비 261인분</p>
+      <p class="formula">영양사님 공식이면 303인분</p>
+      <div class="chips"><span class="chip">맑음</span><span class="chip">돈가스</span><span class="chip">월급날</span></div>
+      <p class="comment">영양사님, 금요일 · 맑음 · 돈가스 · 월급날인 날이에요. 준비 261인분은 영양사님 공식(303인분)보다 42인분 적어요 — 기록에서 월급날은 100명당 56.4명(보통 날 67.8명)이에요.</p>
+    </article>
+  </div>
+</section>
+<section id="whatif">
+  <h2>만약에 — 조건을 골라 보기</h2>
+  <p class="lead">조건을 바꾸면 우리 예보관(선형 회귀)의 계산식으로 예보가 바로 다시 나옵니다.
+    처음 값은 기준 하루(화요일 · 맑음 · 22도 · 비빔밥 · 행사 없음 · 월급날 아님 · 출근 470명)입니다.</p>
+  <div class="card sim">
+    <div class="presets"><span class="lab">다음 주 하루 불러오기</span><button type="button" class="preset" data-i="0">10/19(월)</button><button type="button" class="preset" data-i="1">10/20(화)</button><button type="button" class="preset" data-i="2">10/21(수)</button><button type="button" class="preset" data-i="3">10/22(목)</button><button type="button" class="preset" data-i="4">10/23(금)</button>
+      <button type="button" class="preset reset" data-i="base">기준 하루</button></div>
+    <div class="fields">
+      <label class="field"><span>요일</span><select data-k="요일"><option value="월">월</option><option value="화">화</option><option value="수">수</option><option value="목">목</option><option value="금">금</option></select></label><label class="field"><span>날씨</span><select data-k="날씨"><option value="맑음">맑음</option><option value="흐림">흐림</option><option value="비">비</option><option value="눈">눈</option></select></label><label class="field"><span>메인메뉴</span><select data-k="메인메뉴"><option value="갈비찜 특식">갈비찜 특식</option><option value="국수">국수</option><option value="김치찌개">김치찌개</option><option value="돈가스">돈가스</option><option value="비빔밥">비빔밥</option><option value="샐러드">샐러드</option><option value="생선구이">생선구이</option><option value="제육볶음">제육볶음</option><option value="짜장">짜장</option><option value="치킨마요">치킨마요</option><option value="카레">카레</option></select></label><label class="field"><span>행사</span><select data-k="행사"><option value="없음">없음</option><option value="명절 전날">명절 전날</option><option value="외부 손님 방문">외부 손님 방문</option><option value="전사 교육">전사 교육</option><option value="창립기념일">창립기념일</option></select></label>
+      <label class="field"><span>월급날</span><select data-k="월급날"><option value="0">아님</option><option value="1">맞음</option></select></label>
+      <label class="field"><span>출근 인원(명)</span><input type="number" inputmode="numeric" min="0" step="1" data-k="출근예정"></label>
+      <label class="field"><span>최고기온(도)</span><input type="number" inputmode="decimal" step="0.1" data-k="최고기온"></label>
+    </div>
+    <div class="sim-out" aria-live="polite">
+      <p class="big"><b id="sim-n">309</b>명 · 준비 <b id="sim-prep">319</b>인분</p>
+      <p id="sim-vs" class="formula">기준 하루와 같음</p>
+    </div>
+  </div>
+</section>
+<section id="scorecard">
+  <h2>예보 성적표</h2>
+  <p class="lead">2025-10-01 ~ 2026-09-11(226일)로 배우고,
+    배울 때 쓰지 않은 최근 20일(2026-09-14 ~ 2026-10-15)로 시험했습니다.</p>
+  <div class="forecasters"><div class="fc pick"><span class="lab">선형 회귀</span><b>7.4</b><span class="unit">인분 차이 / 하루</span><span class=pick-tag>우리 예보관</span></div><div class="fc"><span class="lab">LightGBM</span><b>9.1</b><span class="unit">인분 차이 / 하루</span></div></div>
+  <p class="tally">복잡한 쪽이 늘 이기지는 않는다 — 시험으로 고른다</p>
+  <p class="note">예보관 설정은 모두 같은 결과를 보려고 고정</p>
+  <article class="card wide">
+    <h3>시험 20일 — 실제 · 우리 예보관(선형 회귀) · 영양사님 공식</h3>
+    <div class="chart" style="height:300px"><canvas id="testline" aria-label="시험 기간 선 그래프"></canvas></div>
+    <ul class="marks"><li><b>9/23(수) 추석 연휴 전날 · 돈가스</b> — 실제 226명 · AI 예보 224명(준비 234인분) · 영양사님 공식 359인분</li><li><b>9/30(수) 비 오는 수요일 · 카레</b> — 실제 369명 · AI 예보 373명(준비 383인분) · 영양사님 공식 326인분</li></ul>
+  </article>
+  <div class="cards three">
+    <article class="card cmp">
+      <h3>하루 평균 몇 인분 차이</h3>
+      <div class="nums">
+        <div class="num"><span class="lab">AI(우리 예보관 + 10)</span><b>7.4</b><span class="days">인분</span></div>
+        <div class="num"><span class="lab">영양사님 공식</span><b>26.2</b><span class="days">인분</span></div>
+      </div><p class="how">AI는 예보, 공식은 준비량과 실제의 차이(크기만)를 평균</p>
+    </article>
+    <article class="card cmp">
+      <h3>남은 밥</h3>
+      <div class="nums">
+        <div class="num"><span class="lab">AI(우리 예보관 + 10)</span><b>306</b><span class="days">인분 · 1,377,000원</span></div>
+        <div class="num"><span class="lab">영양사님 공식</span><b>383</b><span class="days">인분 · 1,723,500원</span></div>
+      </div><p class="how">1인분 원가 4,500원(가정) · 시험 20일 합계</p>
+    </article>
+    <article class="card cmp">
+      <h3>모자란 밥 (= 컵라면을 드신 분)</h3>
+      <div class="nums">
+        <div class="num"><span class="lab">AI(우리 예보관 + 10)</span><b>0</b><span class="days">인분 · 0일</span></div>
+        <div class="num"><span class="lab">영양사님 공식</span><b>142</b><span class="days">인분 · 6일</span></div>
+      </div><p class="how">인분 합계 · 모자란 날 수</p>
+    </article>
+  </div>
+</section>
 <section id="beliefs">
   <h2>영양사님 감 검증</h2>
   <p class="lead">정 영양사님(가상)의 믿음 다섯 가지를 기록으로 확인했습니다.
@@ -114,7 +262,7 @@ section h2 { font-size:22px; margin:0 0 8px; }
   </div>
 </section>
 </main>
-<script type="application/json" id="page-data">{"charts": {"belief1": {"labels": ["비 오는 날", "맑은 날"], "values": [73.4, 65.3], "hi": [true, false], "horizontal": true}, "belief2": {"labels": ["금요일", "월–목"], "values": [60.0, 69.6], "hi": [true, false], "horizontal": true}, "belief3": {"labels": ["카레", "돈가스", "치킨마요", "제육볶음", "김치찌개", "비빔밥", "짜장", "국수", "생선구이", "샐러드"], "values": [72.3, 72.1, 71.1, 69.6, 68.7, 67.7, 67.4, 66.1, 63.3, 55.0], "hi": [false, true, false, false, false, false, false, false, false, false], "horizontal": true}, "belief4": {"labels": ["31도 이상", "25도 이상 31도 미만"], "values": [72.8, 70.1], "hi": [true, false], "horizontal": true}, "belief5": {"labels": ["월요일", "화–목"], "values": [71.7, 68.9], "hi": [true, false], "horizontal": true}, "payday": {"labels": ["월급날", "보통 날"], "values": [56.4, 67.8], "hi": [true, false], "horizontal": true}}}</script>
+<script type="application/json" id="page-data">{"charts": {"belief1": {"labels": ["비 오는 날", "맑은 날"], "values": [73.4, 65.3], "hi": [true, false], "horizontal": true}, "belief2": {"labels": ["금요일", "월–목"], "values": [60.0, 69.6], "hi": [true, false], "horizontal": true}, "belief3": {"labels": ["카레", "돈가스", "치킨마요", "제육볶음", "김치찌개", "비빔밥", "짜장", "국수", "생선구이", "샐러드"], "values": [72.3, 72.1, 71.1, 69.6, 68.7, 67.7, 67.4, 66.1, 63.3, 55.0], "hi": [false, true, false, false, false, false, false, false, false, false], "horizontal": true}, "belief4": {"labels": ["31도 이상", "25도 이상 31도 미만"], "values": [72.8, 70.1], "hi": [true, false], "horizontal": true}, "belief5": {"labels": ["월요일", "화–목"], "values": [71.7, 68.9], "hi": [true, false], "horizontal": true}, "payday": {"labels": ["월급날", "보통 날"], "values": [56.4, 67.8], "hi": [true, false], "horizontal": true}}, "line": {"labels": ["9/14(월)", "9/15(화)", "9/16(수)", "9/17(목)", "9/18(금)", "9/21(월)", "9/22(화)", "9/23(수)", "9/28(월)", "9/29(화)", "9/30(수)", "10/1(목)", "10/2(금)", "10/6(화)", "10/7(수)", "10/8(목)", "10/12(월)", "10/13(화)", "10/14(수)", "10/15(목)"], "actual": [327, 318, 342, 366, 220, 354, 340, 226, 349, 319, 369, 307, 278, 284, 333, 314, 334, 289, 370, 330], "ai": [338, 332, 359, 358, 215, 357, 347, 224, 361, 317, 373, 309, 285, 279, 334, 325, 346, 303, 371, 342], "formula": [333, 331, 320, 330, 265, 372, 359, 359, 335, 323, 326, 337, 272, 327, 345, 336, 344, 315, 349, 332], "marks": [7, 10], "ourName": "선형 회귀"}, "sim": {"intercept": 6.045870153804287, "coef": {"최고기온": 0.478661653757729, "월급날": -29.30858301171867, "출근예정": 0.6685917005993394, "요일_금": -37.265371237703825, "요일_목": 2.6447108800776555, "요일_수": 10.278812562878315, "요일_월": 17.772822351276613, "요일_화": 6.569025443471269, "날씨_눈": 23.825923880228604, "날씨_맑음": -19.4152776615764, "날씨_모름": -5.174070451544476, "날씨_비": 13.81454142993197, "날씨_흐림": -13.051117197039737, "메인메뉴_갈비찜 특식": 19.03004683768495, "메인메뉴_국수": -9.249611077939765, "메인메뉴_김치찌개": 2.256493084416488, "메인메뉴_돈가스": 18.14066015129755, "메인메뉴_비빔밥": -6.135060179585412, "메인메뉴_샐러드": -43.74347739426907, "메인메뉴_생선구이": -29.076184783723072, "메인메뉴_제육볶음": 8.909263751989414, "메인메뉴_짜장": 2.6347290779584447, "메인메뉴_치킨마요": 15.632866587096283, "메인메뉴_카레": 21.600273945074026, "행사_명절 전날": -41.0794421172814, "행사_없음": -2.9448531490224847, "행사_외부 손님 방문": 16.83110903447355, "행사_전사 교육": 8.163139394145395, "행사_창립기념일": 19.030046837684964}, "tempFill": 18.45, "options": {"요일": ["월", "화", "수", "목", "금"], "날씨": ["맑음", "흐림", "비", "눈"], "메인메뉴": ["갈비찜 특식", "국수", "김치찌개", "돈가스", "비빔밥", "샐러드", "생선구이", "제육볶음", "짜장", "치킨마요", "카레"], "행사": ["없음", "명절 전날", "외부 손님 방문", "전사 교육", "창립기념일"]}, "base": {"요일": "화", "날씨": "맑음", "최고기온": 22, "메인메뉴": "비빔밥", "행사": "없음", "월급날": 0, "출근예정": 470}, "presets": [{"label": "10/19(월)", "요일": "월", "날씨": "맑음", "최고기온": 18.0, "메인메뉴": "제육볶음", "행사": "없음", "월급날": 0, "출근예정": 468}, {"label": "10/20(화)", "요일": "화", "날씨": "흐림", "최고기온": 17.0, "메인메뉴": "샐러드", "행사": "외부 손님 방문", "월급날": 0, "출근예정": 472}, {"label": "10/21(수)", "요일": "수", "날씨": "비", "최고기온": 15.0, "메인메뉴": "카레", "행사": "없음", "월급날": 0, "출근예정": 470}, {"label": "10/22(목)", "요일": "목", "날씨": "맑음", "최고기온": 19.0, "메인메뉴": "생선구이", "행사": "전사 교육", "월급날": 0, "출근예정": 515}, {"label": "10/23(금)", "요일": "금", "날씨": "맑음", "최고기온": 20.0, "메인메뉴": "돈가스", "행사": "없음", "월급날": 1, "출근예정": 458}], "extra": 10, "fallbackNote": ""}}</script>
 <script>
 const DATA = JSON.parse(document.getElementById('page-data').textContent);
 const css = getComputedStyle(document.documentElement);
@@ -130,6 +278,74 @@ for (const [id, c] of Object.entries(DATA.charts)) {
       plugins: { legend: { display: false },
                  tooltip: { callbacks: { label: ctx => ctx.parsed.x.toFixed(1) + '명 (100명당)' } } },
       scales: { x: { beginAtZero: true, suggestedMax: 100, grid: { color: '#eef0f3' } }, y: { grid: { display: false } } } }
+  });
+}
+const S = DATA.sim;
+if (S) {
+  const NUM = ['최고기온', '월급날', '출근예정'];
+  const roundHalfUp = x => Math.floor(x + 0.5);
+  const predict = day => {  // 절편 + Σ(계수 × 값) — 스크립트의 sim_predict와 같은 순서
+    let total = S.intercept;
+    for (const [col, w] of Object.entries(S.coef)) {
+      if (NUM.includes(col)) {
+        let v = day[col];
+        if (col === '최고기온' && (v === '' || v === null || Number.isNaN(v))) v = S.tempFill;
+        total += w * Number(v);
+      } else {
+        const cut = col.indexOf('_');
+        total += w * (day[col.slice(0, cut)] === col.slice(cut + 1) ? 1 : 0);
+      }
+    }
+    return total;
+  };
+  const baseN = roundHalfUp(predict(S.base));
+  const box = document.getElementById('whatif');
+  const inputs = [...box.querySelectorAll('[data-k]')];
+  const read = () => {
+    const day = {};
+    for (const el of inputs) {
+      const k = el.dataset.k;
+      if (k === '월급날') day[k] = Number(el.value);
+      else if (k === '출근예정') day[k] = el.value === '' ? 0 : Number(el.value);
+      else if (k === '최고기온') day[k] = el.value === '' ? '' : Number(el.value);
+      else day[k] = el.value;
+    }
+    return day;
+  };
+  const show = () => {
+    const n = roundHalfUp(predict(read())), gap = n - baseN;
+    document.getElementById('sim-n').textContent = n;
+    document.getElementById('sim-prep').textContent = n + S.extra;
+    document.getElementById('sim-vs').textContent =
+      gap === 0 ? '기준 하루와 같음' : '기준 하루보다 ' + Math.abs(gap) + '명 ' + (gap > 0 ? '많음' : '적음');
+  };
+  const fill = day => {
+    for (const el of inputs) el.value = String(day[el.dataset.k]);
+    show();
+  };
+  for (const el of inputs) { el.addEventListener('input', show); el.addEventListener('change', show); }
+  for (const b of box.querySelectorAll('.preset'))
+    b.addEventListener('click', () => fill(b.dataset.i === 'base' ? S.base : S.presets[Number(b.dataset.i)]));
+  fill(S.base);
+}
+const L = DATA.line;
+if (L && L.labels) {
+  const WARN = css.getPropertyValue('--warn').trim(), INK = css.getPropertyValue('--ink').trim();
+  const mark = (base, big) => L.labels.map((_, i) => L.marks.includes(i) ? big : base);
+  new Chart(document.getElementById('testline'), {
+    type: 'line',
+    data: { labels: L.labels, datasets: [
+      { label: '실제', data: L.actual, borderColor: INK, backgroundColor: INK, borderWidth: 2,
+        pointRadius: mark(2, 7), pointBackgroundColor: mark(INK, WARN), pointBorderColor: mark(INK, WARN) },
+      { label: '우리 예보관(' + L.ourName + ')', data: L.ai, borderColor: ACCENT, backgroundColor: ACCENT,
+        borderWidth: 2, pointRadius: 2 },
+      { label: '영양사님 공식', data: L.formula, borderColor: '#8a93a3', backgroundColor: '#8a93a3',
+        borderWidth: 2, borderDash: [6, 4], pointRadius: 2 } ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 14 } },
+                 tooltip: { callbacks: { label: ctx => ctx.dataset.label + ' ' + ctx.parsed.y + '명' } } },
+      scales: { x: { ticks: { maxRotation: 60, autoSkip: true } }, y: { grid: { color: '#eef0f3' } } } }
   });
 }
 </script>
